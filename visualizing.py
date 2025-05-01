@@ -23,7 +23,7 @@ def on_legend_click(event):
 
 # 用户输入处理
 def get_user_input():
-    print("请输入地铁线路（格式示例：1号线：A站，B站，C站），输入空行结束：")
+    print("请输入校车线路（格式示例：1号线：A站，B站，C站），输入空行结束：")
     lines = []
     while True:
         s = input().strip()
@@ -138,6 +138,6 @@ if __name__ == "__main__":
     print("\n线路信息表：")
     print(df.to_string(index=False))
     
-    plt.title("地铁线路图（点击图例切换显示）")
+    plt.title("校车线路图（点击图例切换显示）")
     plt.tight_layout()
     plt.show()
