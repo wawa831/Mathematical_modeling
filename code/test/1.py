@@ -28,7 +28,6 @@ travel_times = {
 }
 
 # ===================== 数据结构定义 =====================
-
 class Bus:
     def __init__(self, bus_id, route_id, capacity, bus_type):
         self.bus_id = bus_id
@@ -46,7 +45,6 @@ class Station:
 
 
 # ===================== 数据初始化 =====================
-
 def load_station_data():
     # 早高峰时期的需求(7:30)
     morning_demands = {
@@ -117,8 +115,7 @@ def load_bus_data():
         (7, 6, 26, "普通"),
         (8, 4, 13, "普通"),
         (9, 2, 13, "支线"),
-        (10, 4, 13, "高峰车1"),
-        (11, 6, 26, "高峰车2")
+        (10, 2, 13, "高峰车")  # 修改：只保留 2 辆高峰车
     ]
 
     bus_id = 1
@@ -216,7 +213,6 @@ def load_routes():
 
 
 # ===================== 调度与仿真核心 =====================
-
 def calculate_route_demands(stations, G):
     """计算每条路线的总需求量"""
     route_demands = {}
@@ -236,9 +232,8 @@ def calculate_route_demands(stations, G):
 
 def allocate_buses(buses, route_demands):
     """根据路线需求量分配车辆"""
-    # 给高峰车分配需求量最大的路线
-    peak_buses = [bus for bus in buses if "高峰" in bus.bus_type]
-    normal_buses = [bus for bus in buses if "高峰" not in bus.bus_type]
+    peak_buses = [bus for bus in buses if bus.bus_type == "高峰车"]
+    normal_buses = [bus for bus in buses if bus.bus_type != "高峰车"]
 
     sorted_routes = sorted(route_demands.items(), key=lambda x: x[1], reverse=True)
 
@@ -250,7 +245,7 @@ def allocate_buses(buses, route_demands):
 
     # 分配普通车和支线车
     for bus in normal_buses:
-        if bus.bus_type != "支线":  # 保持原有路线
+        if bus.bus_type != "支线":
             continue
         if sorted_routes:
             bus.route_id = sorted_routes[0][0]
@@ -337,8 +332,8 @@ def init_genetic_algorithm(buses, route_count, population_size):
     for _ in range(population_size):
         # 随机生成一个解，每个解是车辆到路线的映射
         solution = []
-        peak_buses = [bus for bus in buses if "高峰" in bus.bus_type]
-        normal_buses = [bus for bus in buses if "高峰" not in bus.bus_type]
+        peak_buses = [bus for bus in buses if bus.bus_type == "高峰车"]
+        normal_buses = [bus for bus in buses if bus.bus_type != "高峰车"]
 
         # 优先分配高峰车
         peak_demands = [random.randint(1, route_count) for _ in peak_buses]
@@ -418,7 +413,7 @@ def optimize_bus_allocation(buses, stations, G, generations=100, population_size
             if random.random() < 0.1:  # 变异概率
                 mutation_point = random.randint(0, len(buses) - 1)
                 child[mutation_point] = random.randint(1, route_count)
-                
+
             # 检查解的合法性
             if is_solution_valid(child, route_count):
                 new_population.append(child)
@@ -463,36 +458,35 @@ def optimize_free_allocation(buses, stations, G):
 
 def evaluate_peak_bus_efficiency(buses):
     """评估高峰车的使用效率"""
-    peak_buses = [bus for bus in buses if "高峰" in bus.bus_type]
+    peak_buses = [bus for bus in buses if bus.bus_type == "高峰车"]
     if not peak_buses:
         return 1.0  # 如果没有高峰车，返回最高分
-        
+
     # 计算高峰车的路线分布
     route_count = {}
     for bus in peak_buses:
         route_count[bus.route_id] = route_count.get(bus.route_id, 0) + 1
-    
+
     # 计算路线分布的均匀度
     total_routes = len(set(route_count.keys()))
     if total_routes == 0:
         return 0.0
-        
+
     avg_buses = len(peak_buses) / total_routes
     variance = sum((count - avg_buses) ** 2 
                   for count in route_count.values()) / total_routes
-    
+
     # 计算高峰车的分散程度（越分散越好）
     dispersion = 1 / (1 + variance)
-    
+
     # 计算高峰车的路线覆盖率
     coverage = total_routes / 9  # 9条路线
-    
+
     # 综合评分
     return (dispersion * 0.6 + coverage * 0.4)
 
 
 # ===================== 不确定性分析 =====================
-
 def uncertainty_analysis(buses, stations, G):
     """不确定性分析改进版"""
     results = []
@@ -505,19 +499,19 @@ def uncertainty_analysis(buses, stations, G):
     ]
 
     base_time = simulate_transport(buses, stations, G)  # 基准时间
-    
+
     for demand_factor, speed_factor in variations:
         # 保存原始需求数据
         original_demands = {
             station.name: station.demand_dict.copy() 
             for station in stations
         }
-        
+
         # 修改需求
         for station in stations:
             for dest in station.demand_dict:
                 station.demand_dict[dest] = int(station.demand_dict[dest] * demand_factor)
-        
+
         # 仿真运行
         time = simulate_transport(buses, stations, G, speed=15*speed_factor)
         results.append({
@@ -526,41 +520,40 @@ def uncertainty_analysis(buses, stations, G):
             'time': time,
             'time_change': (time - base_time) / base_time * 100
         })
-        
+
         # 恢复原始需求
         for station in stations:
             station.demand_dict = original_demands[station.name].copy()
-    
+
     # 可视化改进
     plt.figure(figsize=(12, 6))
-    
+
     # 绘制柱状图
     scenarios = [f"需求{r['demand_change']}\n速度{r['speed_change']}" for r in results]
     times = [r['time'] for r in results]
     changes = [r['time_change'] for r in results]
-    
+
     bars = plt.bar(scenarios, times)
-    
+
     # 添加数值标签
     for bar, change in zip(bars, changes):
         height = bar.get_height()
         plt.text(bar.get_x() + bar.get_width()/2., height,
                 f'{height:.1f}分钟\n({change:+.1f}%)',
                 ha='center', va='bottom')
-    
+
     plt.title('不同情景下的运输时间变化', fontsize=14, pad=20)
     plt.ylabel('运输时间（分钟）')
     plt.grid(True, linestyle='--', alpha=0.3)
-    
+
     # 调整布局
     plt.tight_layout()
     plt.show()
-    
+
     return results
 
 
 # ===================== 可视化与结果输出 =====================
-
 def visualize_routes(G):
     # 创建一个更大的图形
     plt.figure(figsize=(24, 16), facecolor='#f0f0f0')
@@ -643,7 +636,7 @@ def visualize_routes(G):
                                    alpha=0.9)
     nodes.set_zorder(20)  # 确保节点在边之上
 
-    # 添加节点标签，使用阴影效果33
+    # 添加节点标签，使用阴影效果
     labels = nx.draw_networkx_labels(G, pos,
                                      font_size=12,
                                      font_family='SimHei',
@@ -706,7 +699,7 @@ def print_results(morning_time, afternoon_time, free_time, uncertainty_results):
     print(f"早高峰最短时间: {morning_time:.2f} 分钟")
     print(f"下课高峰最短时间: {afternoon_time:.2f} 分钟")
     print(f"自由调配最短时间: {free_time:.2f} 分钟")
-    
+
     print("\n=== 不确定性分析 ===")
     print("情景分析结果：")
     for result in uncertainty_results:
