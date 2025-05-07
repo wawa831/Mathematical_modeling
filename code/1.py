@@ -418,7 +418,7 @@ def optimize_bus_allocation(buses, stations, G, generations=100, population_size
             if random.random() < 0.1:  # 变异概率
                 mutation_point = random.randint(0, len(buses) - 1)
                 child[mutation_point] = random.randint(1, route_count)
-
+                
             # 检查解的合法性
             if is_solution_valid(child, route_count):
                 new_population.append(child)
