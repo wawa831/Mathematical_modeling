@@ -29,14 +29,27 @@ travel_times = {
 }
 
 class Bus:
-    def __init__(self, bus_id, route_id, capacity, bus_type):
-        self.bus_id = bus_id
-        self.route_id = route_id
-        self.capacity = capacity
-        self.bus_type = bus_type  # 普通/高峰/支线
-        self.location = None
-        self.passengers = 0
+    class Bus:
+    
+        def __init__(self, bus_id, route_id, capacity, bus_type):
+            self.bus_id = bus_id
+            self.route_id = route_id
+            self.capacity = capacity
+            self.bus_type = bus_type  # 普通/高峰/支线
+            self.location = None
+            self.passengers = 0
 
+        def copy(self):
+            """创建当前 Bus 实例的深拷贝"""
+            new_bus = Bus(
+                self.bus_id,
+                self.route_id,
+                self.capacity,
+                self.bus_type
+            )
+            new_bus.location = self.location
+            new_bus.passengers = self.passengers
+            return new_bus
 
 class Station:
     def __init__(self, name, demand_dict):
@@ -324,7 +337,7 @@ def is_solution_valid(solution, route_count):
 
 
 def fitness_function(solution, buses, stations, G):
-    temp_buses = [b.copy() for b in buses]
+    temp_buses = [b.copy() for b in buses]  # 使用新增的 .copy()
     for i, bus in enumerate(temp_buses):
         bus.route_id = solution[i]
     time = simulate_transport(temp_buses, stations, G)
