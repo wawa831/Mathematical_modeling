@@ -29,27 +29,27 @@ travel_times = {
 }
 
 class Bus:
-    class Bus:
     
-        def __init__(self, bus_id, route_id, capacity, bus_type):
-            self.bus_id = bus_id
-            self.route_id = route_id
-            self.capacity = capacity
-            self.bus_type = bus_type  # 普通/高峰/支线
-            self.location = None
-            self.passengers = 0
+    def __init__(self, bus_id, route_id, capacity, bus_type):
+        self.bus_id = bus_id
+        self.route_id = route_id
+        self.capacity = capacity
+        self.bus_type = bus_type  # 普通/高峰/支线
+        self.location = None
+        self.passengers = 0
 
-        def copy(self):
-            """创建当前 Bus 实例的深拷贝"""
-            new_bus = Bus(
-                self.bus_id,
-                self.route_id,
-                self.capacity,
-                self.bus_type
-            )
-            new_bus.location = self.location
-            new_bus.passengers = self.passengers
-            return new_bus
+    def copy(self):
+        """创建当前 Bus 实例的深拷贝"""
+        new_bus = Bus(
+        self.bus_id,
+        self.route_id,
+        self.capacity,
+        self.bus_type
+        )
+        new_bus.location = self.location
+        new_bus.passengers = self.passengers
+        return new_bus
+
 
 class Station:
     def __init__(self, name, demand_dict):
@@ -121,94 +121,195 @@ def load_bus_data():
         (7, 6, 26, "普通"),
         (8, 4, 13, "普通"),
         (9, 2, 13, "支线"),
-        (10, 2, 13, "高峰车")
+        (10, 4, 13, "高峰车"),   # 高峰车1
+        (11, 6, 26, "高峰车"),   # 高峰车2
     ]
 
     bus_id = 1
     for route_id, count, capacity, bus_type in bus_configs:
         for _ in range(count):
-            buses.append(Bus(bus_id, route_id, capacity, bus_type))
+            # 普通车只能跑自己编号路线
+            if bus_type == "普通":
+                buses.append(Bus(bus_id, route_id, capacity, bus_type))
+            # 支线车只能跑支线
+            elif bus_type == "支线":
+                buses.append(Bus(bus_id, 9, capacity, bus_type))
+            # 高峰车初始不分配路线，后续优化分配
+            elif bus_type == "高峰车":
+                buses.append(Bus(bus_id, None, capacity, bus_type))
             bus_id += 1
-
     return buses
 
 
 def load_routes():
     G = nx.DiGraph()
+    # 所有涉及的站点
     stations = [
-        "竹园", "楠园", "经管院", "八教(李园)", "九教(芸文楼)",
-        "国际学院(外办)", "外国语学院", "二十七教(梅园)",
-        "橘园十一舍", "橘园食堂", "桃园"
+        "经管院", "资环院", "32教", "共青团花园", "楠园", "校史馆", "大礼堂", "研究生院",
+        "中心图书馆(地科院)", "8教", "行署楼1号门", "田家炳", "文学院", "圆顶", "外办", "5号门",
+        "校医院", "西师街", "后山竹园", "地科院", "心理学部", "外国语学院", "药学院", "梅园",
+        "梅园食堂", "橘园", "桃园", "荟文楼", "橘园12舍", "橘园10舍", "26教", "梅园1舍", "音乐学院", "2号门", "共青团花园2号门"
     ]
     G.add_nodes_from(stations)
 
     routes = [
-        # 1号线
-        ("经管院", "楠园", {"route": 1, "distance": 0.5}),
-        ("楠园", "八教(李园)", {"route": 1, "distance": 0.4}),
-        ("八教(李园)", "九教(芸文楼)", {"route": 1, "distance": 0.3}),
-        ("九教(芸文楼)", "国际学院(外办)", {"route": 1, "distance": 0.4}),
+        ("经管院", "资环院", 0.370, 1),
+        ("资环院", "32教", 0.383, 1),
+        ("32教", "共青团花园", 0.272, 1),
+        ("共青团花园", "楠园", 0.315, 1),
+        ("楠园", "校史馆", 0.239, 1),
+        ("校史馆", "大礼堂", 0.163, 1),
+        ("大礼堂", "研究生院", 0.123, 1),
+        ("研究生院", "中心图书馆(地科院)", 0.222, 1),
+        ("中心图书馆(地科院)", "8教", 0.310, 1),
+        ("8教", "行署楼1号门", 0.179, 1),
+        ("行署楼1号门", "田家炳", 0.201, 1),
+        ("田家炳", "文学院", 0.111, 1),
+        ("文学院", "圆顶", 0.224, 1),
+        ("圆顶", "外办", 0.204, 1),
+        ("外办", "5号门", 0.230, 1),
 
-        # 2号线
-        ("经管院", "楠园", {"route": 2, "distance": 0.5}),
-        ("楠园", "八教(李园)", {"route": 2, "distance": 0.4}),
+        ("经管院", "资环院", 0.370, 2),
+        ("资环院", "32教", 0.383, 2),
+        ("32教", "共青团花园", 0.272, 2),
+        ("共青团花园", "楠园", 0.315, 2),
+        ("楠园", "校史馆", 0.239, 2),
+        ("校史馆", "大礼堂", 0.163, 2),
+        ("大礼堂", "研究生院", 0.123, 2),
+        ("研究生院", "中心图书馆(地科院)", 0.222, 2),
+        ("中心图书馆(地科院)", "8教", 0.310, 2),
+        ("8教", "行署楼1号门", 0.179, 2),
+        ("行署楼1号门", "田家炳", 0.201, 2),
+        ("田家炳", "校医院", 0.249, 2),
+        ("校医院", "西师街", 0.118, 2),
+        ("西师街", "5号门", 0.455, 2),
 
-        # 3号线
-        ("竹园", "楠园", {"route": 3, "distance": 0.6}),
-        ("楠园", "外国语学院", {"route": 3, "distance": 0.4}),
-        ("外国语学院", "二十七教(梅园)", {"route": 3, "distance": 0.3}),
-        ("二十七教(梅园)", "橘园食堂", {"route": 3, "distance": 0.5}),
-        ("橘园食堂", "桃园", {"route": 3, "distance": 0.3}),
-        ("桃园", "九教(芸文楼)", {"route": 3, "distance": 0.4}),
-        ("九教(芸文楼)", "国际学院(外办)", {"route": 3, "distance": 0.4}),
+        ("后山竹园", "32教", 0.466, 3),
+        ("32教", "共青团花园", 0.272, 3),
+        ("共青团花园", "楠园", 0.315, 3),
+        ("楠园", "校史馆", 0.239, 3),
+        ("校史馆", "大礼堂", 0.163, 3),
+        ("大礼堂", "研究生院", 0.123, 3),
+        ("研究生院", "中心图书馆(地科院)", 0.222, 3),
+        ("中心图书馆(地科院)", "地科院", 0.074, 3),
+        ("地科院", "心理学部", 0.260, 3),
+        ("心理学部", "外国语学院", 0.099, 3),
+        ("外国语学院", "药学院", 0.144, 3),
+        ("药学院", "梅园", 0.157, 3),
+        ("梅园", "梅园食堂", 0.155, 3),
+        ("梅园食堂", "橘园", 0.358, 3),
+        ("橘园", "桃园", 0.256, 3),
+        ("桃园", "荟文楼", 0.092, 3),
+        ("荟文楼", "圆顶", 0.309, 3),
+        ("圆顶", "外办", 0.147, 3),
+        ("外办", "5号门", 0.228, 3),
+        ("橘园", "田家炳文学院", 0.390, 3),
+        ("田家炳文学院", "圆顶", 0.320, 3),
+        ("2号门", "共青团花园2号门", 0.121, 3),
 
         # 4号线
-        ("楠园", "外国语学院", {"route": 4, "distance": 0.4}),
-        ("外国语学院", "二十七教(梅园)", {"route": 4, "distance": 0.3}),
-        ("二十七教(梅园)", "橘园十一舍", {"route": 4, "distance": 0.4}),
-        ("橘园十一舍", "橘园食堂", {"route": 4, "distance": 0.3}),
+        ("2号门", "共青团花园2号门", 0.121, 4),
+        ("共青团花园", "楠园", 0.315, 4),
+        ("楠园", "校史馆", 0.239, 4),
+        ("校史馆", "大礼堂", 0.163, 4),
+        ("大礼堂", "研究生院", 0.123, 4),
+        ("研究生院", "中心图书馆(地科院)", 0.222, 4),
+        ("中心图书馆(地科院)", "地科院", 0.074, 4),
+        ("地科院", "心理学部", 0.260, 4),
+        ("心理学部", "外国语学院", 0.099, 4),
+        ("外国语学院", "药学院", 0.144, 4),
+        ("药学院", "梅园", 0.157, 4),
+        ("梅园", "梅园食堂", 0.155, 4),
+        ("梅园食堂", "橘园12舍", 0.172, 4),
+        ("橘园12舍", "橘园", 0.186, 4),
 
         # 5号线
-        ("楠园", "八教(李园)", {"route": 5, "distance": 0.4}),
-        ("八教(李园)", "国际学院(外办)", {"route": 5, "distance": 0.5}),
+        ("2号门", "共青团花园2号门", 0.121, 5),
+        ("共青团花园", "楠园", 0.315, 5),
+        ("楠园", "校史馆", 0.239, 5),
+        ("校史馆", "大礼堂", 0.163, 5),
+        ("大礼堂", "研究生院", 0.123, 5),
+        ("研究生院", "中心图书馆(地科院)", 0.222, 5),
+        ("中心图书馆(地科院)", "8教", 0.310, 5),
+        ("8教", "行署楼1号门", 0.179, 5),
+        ("行署楼1号门", "田家炳", 0.201, 5),
+        ("田家炳", "圆顶", 0.335, 5),
+        ("圆顶", "外办", 0.204, 5),
+        ("外办", "5号门", 0.230, 5),
 
         # 6号线
-        ("竹园", "楠园", {"route": 6, "distance": 0.6}),
-        ("楠园", "外国语学院", {"route": 6, "distance": 0.4}),
-        ("外国语学院", "二十七教(梅园)", {"route": 6, "distance": 0.3}),
-        ("二十七教(梅园)", "橘园十一舍", {"route": 6, "distance": 0.4}),
-        ("橘园十一舍", "橘园食堂", {"route": 6, "distance": 0.3}),
-        ("橘园食堂", "桃园", {"route": 6, "distance": 0.3}),
-        ("桃园", "八教(李园)", {"route": 6, "distance": 0.5}),
+        ("2号门", "共青团花园2号门", 0.121, 6),
+        ("后山竹园", "32教", 0.466, 6),
+        ("32教", "共青团花园", 0.272, 6),
+        ("共青团花园", "楠园", 0.315, 6),
+        ("楠园", "校史馆", 0.239, 6),
+        ("校史馆", "大礼堂", 0.163, 6),
+        ("大礼堂", "研究生院", 0.123, 6),
+        ("研究生院", "中心图书馆(地科院)", 0.222, 6),
+        ("中心图书馆(地科院)", "地科院", 0.074, 6),
+        ("地科院", "心理学部", 0.260, 6),
+        ("心理学部", "外国语学院", 0.099, 6),
+        ("外国语学院", "26教", 0.214, 6),
+        ("26教", "梅园1舍", 0.133, 6),
+        ("梅园1舍", "橘园12舍", 0.213, 6),
+        ("橘园12舍", "橘园10舍", 0.086, 6),
+        ("橘园10舍", "橘园", 0.137, 6),
+        ("橘园", "桃园", 0.256, 6),
+        ("桃园", "文学院", 0.282, 6),
+        ("文学院", "田家炳", 0.108, 6),
+        ("田家炳", "行署楼1号门", 0.201, 6),
+        ("行署楼1号门", "8教", 0.179, 6),
+        ("8教", "地科院", 0.236, 6),
 
         # 7号线
-        ("楠园", "外国语学院", {"route": 7, "distance": 0.4}),
-        ("外国语学院", "二十七教(梅园)", {"route": 7, "distance": 0.3}),
-        ("二十七教(梅园)", "橘园十一舍", {"route": 7, "distance": 0.4}),
-        ("橘园十一舍", "橘园食堂", {"route": 7, "distance": 0.3}),
-        ("橘园食堂", "桃园", {"route": 7, "distance": 0.3}),
-        ("桃园", "九教(芸文楼)", {"route": 7, "distance": 0.4}),
-        ("九教(芸文楼)", "八教(李园)", {"route": 7, "distance": 0.3}),
+        ("2号门", "楠园", 0.436, 7),
+        ("楠园", "校史馆", 0.239, 7),
+        ("校史馆", "大礼堂", 0.163, 7),
+        ("大礼堂", "研究生院", 0.123, 7),
+        ("研究生院", "中心图书馆(地科院)", 0.222, 7),
+        ("中心图书馆(地科院)", "地科院", 0.074, 7),
+        ("地科院", "心理学部", 0.260, 7),
+        ("心理学部", "外国语学院", 0.099, 7),
+        ("外国语学院", "26教", 0.214, 7),
+        ("26教", "梅园1舍", 0.133, 7),
+        ("梅园1舍", "橘园12舍", 0.213, 7),
+        ("橘园12舍", "橘园10舍", 0.086, 7),
+        ("橘园10舍", "橘园", 0.137, 7),
+        ("橘园", "桃园", 0.256, 7),
+        ("桃园", "荟文楼", 0.092, 7),
+        ("荟文楼", "文学院", 0.190, 7),
+        ("文学院", "田家炳", 0.108, 7),
+        ("田家炳", "行署楼1号门", 0.201, 7),
+        ("行署楼1号门", "8教", 0.179, 7),
+        ("8教", "地科院", 0.236, 7),
 
         # 8号线
-        ("八教(李园)", "外国语学院", {"route": 8, "distance": 0.4}),
-        ("外国语学院", "二十七教(梅园)", {"route": 8, "distance": 0.3}),
-        ("二十七教(梅园)", "橘园十一舍", {"route": 8, "distance": 0.4}),
-        ("橘园十一舍", "橘园食堂", {"route": 8, "distance": 0.3}),
-        ("橘园食堂", "桃园", {"route": 8, "distance": 0.3}),
-        ("桃园", "九教(芸文楼)", {"route": 8, "distance": 0.4}),
+        ("地科院", "心理学部", 0.260, 8),
+        ("心理学部", "外国语学院", 0.099, 8),
+        ("外国语学院", "26教", 0.214, 8),
+        ("26教", "梅园1舍", 0.133, 8),
+        ("梅园1舍", "橘园12舍", 0.213, 8),
+        ("橘园12舍", "橘园10舍", 0.086, 8),
+        ("橘园10舍", "橘园", 0.137, 8),
+        ("橘园", "桃园", 0.256, 8),
+        ("桃园", "荟文楼", 0.092, 8),
+        ("荟文楼", "文学院", 0.190, 8),
+        ("文学院", "田家炳", 0.108, 8),
+        ("田家炳", "行署楼1号门", 0.201, 8),
+        ("行署楼1号门", "8教", 0.179, 8),
+        ("8教", "地科院", 0.236, 8),
+        ("音乐学院", "8教", 0.181, 8),
 
-        # 支线
-        ("竹园", "楠园", {"route": 9, "distance": 0.6}),
-        ("楠园", "外国语学院", {"route": 9, "distance": 0.4}),
-        ("外国语学院", "二十七教(梅园)", {"route": 9, "distance": 0.3}),
-        ("二十七教(梅园)", "国际学院(外办)", {"route": 9, "distance": 0.4})
+        # 经管专线（支线）
+        ("经管院", "资环院", 0.370, 9),
+        ("资环院", "32教", 0.383, 9),
+        ("32教", "共青团花园", 0.272, 9),
+        ("共青团花园", "楠园", 0.315, 9),
     ]
 
-    # 添加边
-    for start, end, attr in routes:
-        G.add_edge(start, end, **attr)
-        G.add_edge(end, start, **attr)  # 添加反向边
+    for start, end, dist, route in routes:
+        G.add_edge(start, end, route=route, distance=dist)
+        G.add_edge(end, start, route=route, distance=dist)  # 添加反向边
 
     return G
 
@@ -229,37 +330,62 @@ def calculate_route_demands(stations, G):
 
 
 def allocate_buses(buses, route_demands):
+    """
+    - 普通车只能跑自己编号的路线
+    - 支线车只能跑支线（9号线）
+    - 高峰车可以任意分配到1-9号线（可用优化算法分配）
+    """
+    normal_buses = [bus for bus in buses if bus.bus_type == "普通"]
+    branch_buses = [bus for bus in buses if bus.bus_type == "支线"]
     peak_buses = [bus for bus in buses if bus.bus_type == "高峰车"]
-    normal_buses = [bus for bus in buses if bus.bus_type != "高峰车"]
 
-    sorted_routes = sorted(route_demands.items(), key=lambda x: x[1], reverse=True)
-
-    for bus in peak_buses:
-        if sorted_routes:
-            bus.route_id = sorted_routes[0][0]
-            sorted_routes.pop(0)
-
+    # 普通车分配到自己编号的路线
     for bus in normal_buses:
-        if bus.bus_type != "支线":
-            continue
-        if sorted_routes:
-            bus.route_id = sorted_routes[0][0]
-            sorted_routes.pop(0)
+        # 只能跑自己编号路线
+        pass  # bus.route_id 已在生成时指定，不可更改
+
+    # 支线车分配到支线（9号线）
+    for bus in branch_buses:
+        bus.route_id = 9
+
+    # 高峰车分配到需求最大的路线（可优化，这里简单分配）
+    sorted_routes = sorted(route_demands.items(), key=lambda x: x[1], reverse=True)
+    route_ids = [r[0] for r in sorted_routes] if sorted_routes else [1,2,3,4,5,6,7,8,9]
+    for i, bus in enumerate(peak_buses):
+        bus.route_id = route_ids[i % len(route_ids)]
 
     return buses
-
 
 def assign_buses_to_routes(buses, stations, G, demand_type="morning"):
     route_demands = calculate_route_demands(stations, G)
     return allocate_buses(buses, route_demands)
 
 
+
 def simulate_transport(buses, stations, G, speed=15, load_time=3):
-    total_time = 0
     remaining_passengers = {s.name: s.demand_dict.copy() for s in stations}
+    total_time = 0
+    max_loops = 10000
+    loop_count = 0
+    
+    # 记录每辆车上一次的路线
+    for bus in buses:
+        if not hasattr(bus, 'last_route_id'):
+            bus.last_route_id = bus.route_id
 
     while any(bool(d) for d in remaining_passengers.values()):
+        loop_count += 1
+        if loop_count > max_loops:
+            remaining = sum(sum(d.values()) for d in remaining_passengers.values())
+            return float('inf'), remaining
+
+        round_time = 0
         for bus in buses:
+            # 检查换线等待时间（所有车换线都要等待，因为第三题所有车都可以换线）
+            if bus.route_id != bus.last_route_id:
+                round_time += 0.5  # 30秒换线等待
+            bus.last_route_id = bus.route_id
+
             route_edges = [(u, v) for u, v, d in G.edges(data=True) if d['route'] == bus.route_id]
             if not route_edges:
                 continue
@@ -267,12 +393,8 @@ def simulate_transport(buses, stations, G, speed=15, load_time=3):
             current_passengers = 0
             bus.location = route_edges[0][0]
 
+            # ...existing code...
             for start, end in route_edges:
-                if start not in remaining_passengers:
-                    remaining_passengers[start] = {}
-                if end not in remaining_passengers:
-                    remaining_passengers[end] = {}
-
                 # 计算行驶时间
                 if (start, end) in travel_times:
                     travel_time = travel_times[(start, end)]
@@ -285,31 +407,44 @@ def simulate_transport(buses, stations, G, speed=15, load_time=3):
                     congestion_factor = 1.2 if total_time < 60 else 1.0
                     travel_time = (distance / (speed / congestion_factor)) * 60
 
-                # 上下车时间
-                boarding_time = 0
+                # ====== 上下车时间统计 ======
+                # 统计下车人数
+                drop_off = 0
+                if 'passenger_dest' not in bus.__dict__:
+                    bus.passenger_dest = {}
+                if start in bus.passenger_dest:
+                    drop_off = bus.passenger_dest[start]
+                    bus.passengers -= drop_off
+                    del bus.passenger_dest[start]
+
+                # 统计上车人数
+                pick_up = 0
                 if remaining_passengers[start]:
-                    boarding_time = min(
-                        bus.capacity - current_passengers,
-                        sum(remaining_passengers[start].values())
-                    ) * random.uniform(2, 4) / 60
-                    travel_time += boarding_time
-
                     for dest in list(remaining_passengers[start].keys()):
-                        if current_passengers < bus.capacity:
-                            passengers_to_board = min(
-                                remaining_passengers[start][dest],
-                                bus.capacity - current_passengers
-                            )
-                            current_passengers += passengers_to_board
-                            remaining_passengers[start][dest] -= passengers_to_board
-                            if remaining_passengers[start][dest] == 0:
-                                del remaining_passengers[start][dest]
+                        if bus.passengers < bus.capacity:
+                            can_board = min(remaining_passengers[start][dest], bus.capacity - bus.passengers)
+                            if can_board > 0:
+                                bus.passenger_dest[dest] = bus.passenger_dest.get(dest, 0) + can_board
+                                bus.passengers += can_board
+                                pick_up += can_board
+                                remaining_passengers[start][dest] -= can_board
+                                if remaining_passengers[start][dest] == 0:
+                                    del remaining_passengers[start][dest]
 
-                total_time = max(total_time, travel_time)
+                # 上下车时间（每人3秒，单位：分钟）
+                boarding_time = pick_up * 3 / 60
+                alighting_time = drop_off * 3 / 60
+                travel_time += boarding_time + alighting_time
+
                 bus.location = end
+                round_time += travel_time  # 累加每辆车本轮所有路段的时间
+            # ...existing code...
 
-    return total_time
+        total_time += round_time / len(buses)
 
+    # 返回总时间和剩余需求数量
+    remaining = sum(sum(d.values()) for d in remaining_passengers.values())
+    return total_time, remaining
 
 def init_genetic_algorithm(buses, route_count, population_size):
     population = []
@@ -352,44 +487,70 @@ def calculate_route_coverage(buses, G):
     return len(covered_routes) / 9
 
 
-def optimize_bus_allocation(buses, stations, G, generations=100, population_size=200):
+def optimize_bus_allocation(buses, stations, G, generations=50, population_size=100):
     route_count = 9
-    population = init_genetic_algorithm(buses, route_count, population_size)
+    bus_count = len(buses)
 
+    # 初始化种群：所有车辆都可分配到1~9号线
+    population = []
+    for _ in range(population_size):
+        solution = [random.randint(1, route_count) for _ in range(bus_count)]
+        # 保证每条路线至少有一辆车
+        for rid in range(1, route_count+1):
+            if rid not in solution:
+                solution[random.randint(0, bus_count-1)] = rid
+        population.append(solution)
+
+    def fitness(solution):
+        temp_buses = [b.copy() for b in buses]
+        for i, bus in enumerate(temp_buses):
+            bus.route_id = solution[i]  # 所有车辆都可以自由分配路线
+        time, remaining = simulate_transport(temp_buses, stations, G)
+        if remaining > 0:
+            return -1e6  # 极大惩罚未完成运输的方案
+        return -time
+
+    best_solution = None
+    best_fitness = float('-inf')
+    
     for generation in range(generations):
-        fitness_scores = [fitness_function(sol, buses, stations, G) for sol in population]
+        fitness_scores = [fitness(sol) for sol in population]
         elite_size = population_size // 4
         elite_indices = np.argsort(fitness_scores)[-elite_size:]
         new_population = [population[i] for i in elite_indices]
 
+        # 更新全局最优解
+        current_best_idx = np.argmax(fitness_scores)
+        if fitness_scores[current_best_idx] > best_fitness:
+            best_fitness = fitness_scores[current_best_idx]
+            best_solution = population[current_best_idx]
+
         while len(new_population) < population_size:
             parent1 = random.choice(population)
             parent2 = random.choice(population)
-
-            crossover_point = random.randint(0, len(buses) - 1)
+            crossover_point = random.randint(0, bus_count - 1)
             child = parent1[:crossover_point] + parent2[crossover_point:]
-
+            
+            # 变异
             if random.random() < 0.1:
-                mutation_point = random.randint(0, len(buses) - 1)
+                mutation_point = random.randint(0, bus_count - 1)
                 child[mutation_point] = random.randint(1, route_count)
-
-            if is_solution_valid(child, route_count):
-                new_population.append(child)
-            else:
-                while not is_solution_valid(child, route_count):
-                    mutation_point = random.randint(0, len(buses) - 1)
-                    child[mutation_point] = random.randint(1, route_count)
-                new_population.append(child)
-
+            
+            # 保证每条路线至少有一辆车
+            for rid in range(1, route_count+1):
+                if rid not in child:
+                    child[random.randint(0, bus_count-1)] = rid
+            new_population.append(child)
+        
         population = new_population
 
-    best_solution = max(population, key=lambda x: fitness_function(x, buses, stations, G))
-    for i, bus in enumerate(buses):
+    # 使用最优解更新车辆分配
+    optimized_buses = [b.copy() for b in buses]
+    for i, bus in enumerate(optimized_buses):
         bus.route_id = best_solution[i]
-    time = simulate_transport(buses, stations, G)
-    return time, best_solution
-
-
+    time, _ = simulate_transport(optimized_buses, stations, G)
+    
+    return time, best_solution, optimized_buses
 def evaluate_peak_bus_efficiency(buses):
     peak_buses = [b for b in buses if b.bus_type == "高峰车"]
     if not peak_buses:
@@ -453,7 +614,7 @@ def visualize_routes(G):
         1: {'color': '#E41A1C', 'name': '1号线'},
         2: {'color': '#377EB8', 'name': '2号线'},
         3: {'color': '#4DAF4A', 'name': '3号线'},
-        4: {'color': '#984EA3', 'name': '4号线'},
+        4: {'color': "#914E9B", 'name': '4号线'},
         5: {'color': '#FF7F00', 'name': '5号线'},
         6: {'color': '#FFFF33', 'name': '6号线'},
         7: {'color': '#A65628', 'name': '7号线'},
@@ -466,7 +627,7 @@ def visualize_routes(G):
         edges = [(u, v) for u, v, d in G.edges(data=True) if d['route'] == route_id]
         nx.draw_networkx_edges(G, pos, edgelist=edges, edge_color=style['color'], width=3, arrows=True)
 
-    node_colors = ['#B3E5FC' if '教' in n else '#C8E6C9' if '园' in n else '#FFECB3' for n in G.nodes()]
+    node_colors = ["#B2E1F7" if '教' in n else '#C8E6C9' if '园' in n else '#FFECB3' for n in G.nodes()]
     nx.draw_networkx_nodes(G, pos, node_size=3000, node_color=node_colors, alpha=0.9)
     nx.draw_networkx_labels(G, pos, font_family='SimHei', font_size=12, font_weight='bold')
 
