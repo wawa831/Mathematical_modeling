@@ -362,89 +362,88 @@ def assign_buses_to_routes(buses, stations, G, demand_type="morning"):
 
 
 
+# ...existing code...
 def simulate_transport(buses, stations, G, speed=15, load_time=3):
-    remaining_passengers = {s.name: s.demand_dict.copy() for s in stations}
-    total_time = 0
-    max_loops = 10000
-    loop_count = 0
+    """
+    校车运输过程仿真（离散事件模拟）
     
-    # 记录每辆车上一次的路线
-    for bus in buses:
-        if not hasattr(bus, 'last_route_id'):
-            bus.last_route_id = bus.route_id
+    参数:
+      buses: 校车列表，每个 bus 包含 route_id、capacity、passengers、location 等属性
+      stations: 站点列表，每个 station 包含 name 和 demand_dict，其结构为 {目的站: 人数}
+      G: 校车网络图，各边属性中必须包含 'distance' 与 'route'
+      speed: 校车行驶速度（km/h），默认15
+      load_time: 每人上/下车时间（秒），默认3
+    
+    返回:
+      (total_time, remaining) 总运输时间（分钟）和剩余未运输人数
+    """
+    total_time = 0.0
+    # 初始化各站点的剩余需求
+    remaining_passengers = {station.name: station.demand_dict.copy() for station in stations}
 
-    while any(bool(d) for d in remaining_passengers.values()):
-        loop_count += 1
-        if loop_count > max_loops:
-            remaining = sum(sum(d.values()) for d in remaining_passengers.values())
-            return float('inf'), remaining
-
-        round_time = 0
+    # 当任一站点仍有需求时继续循环
+    while any(sum(d.values()) for d in remaining_passengers.values()):
+        # 每轮中，让所有车辆按其对应线路依次运行一轮
         for bus in buses:
-            # 检查换线等待时间（所有车换线都要等待，因为第三题所有车都可以换线）
-            if bus.route_id != bus.last_route_id:
-                round_time += 0.5  # 30秒换线等待
-            bus.last_route_id = bus.route_id
-
-            route_edges = [(u, v) for u, v, d in G.edges(data=True) if d['route'] == bus.route_id]
+            # 获取当前车辆的路线边（假设G中边顺序即为线路经过顺序）
+            route_edges = [(u, v) for u, v, attr in G.edges(data=True) if attr.get('route') == bus.route_id]
             if not route_edges:
                 continue
 
-            current_passengers = 0
+            # 设置车辆初始位置为路线第一个站点
             bus.location = route_edges[0][0]
+            bus_round_time = 0.0
 
-            # ...existing code...
+            # 按顺序遍历每一段边
             for start, end in route_edges:
-                # 计算行驶时间
-                if (start, end) in travel_times:
-                    travel_time = travel_times[(start, end)]
-                elif (start, end, "顺") in travel_times:
-                    travel_time = travel_times[(start, end, "顺")]
-                elif (start, end, "逆") in travel_times:
-                    travel_time = travel_times[(start, end, "逆")]
-                else:
-                    distance = G[start][end]['distance']
-                    congestion_factor = 1.2 if total_time < 60 else 1.0
-                    travel_time = (distance / (speed / congestion_factor)) * 60
+                # 计算行驶时间（单位：分钟）
+                distance = G[start][end]['distance']
+                t_run = (distance / speed) * 60
 
-                # ====== 上下车时间统计 ======
-                # 统计下车人数
-                drop_off = 0
-                if 'passenger_dest' not in bus.__dict__:
-                    bus.passenger_dest = {}
-                if start in bus.passenger_dest:
-                    drop_off = bus.passenger_dest[start]
-                    bus.passengers -= drop_off
-                    del bus.passenger_dest[start]
+                # 模拟下车（此处简化处理，下车时间与上车类似，不计入车辆内人数变化）
+                # 可根据需要增加下车逻辑
 
-                # 统计上车人数
-                pick_up = 0
-                if remaining_passengers[start]:
+                # 模拟上车：
+                # 获取起点 start 的总等待人数（所有目的站需求合计）
+                waiting = sum(remaining_passengers.get(start, {}).values())
+                if waiting > 0:
+                    # 车辆可上车人数 = 剩余容量（capacity - 当前车上人数）
+                    can_board = max(bus.capacity - bus.passengers, 0)
+                    boarding = min(waiting, can_board)
+                    t_board = (boarding * load_time) / 60   # 转为分钟
+
+                    # 更新车辆上乘客数量
+                    bus.passengers += boarding
+
+                    # 简单扣减起点需求：遍历所有目的站，直到 boarding 数量分配完毕
+                    remaining = boarding
                     for dest in list(remaining_passengers[start].keys()):
-                        if bus.passengers < bus.capacity:
-                            can_board = min(remaining_passengers[start][dest], bus.capacity - bus.passengers)
-                            if can_board > 0:
-                                bus.passenger_dest[dest] = bus.passenger_dest.get(dest, 0) + can_board
-                                bus.passengers += can_board
-                                pick_up += can_board
-                                remaining_passengers[start][dest] -= can_board
-                                if remaining_passengers[start][dest] == 0:
-                                    del remaining_passengers[start][dest]
+                        req = remaining_passengers[start][dest]
+                        if req <= remaining:
+                            remaining -= req
+                            del remaining_passengers[start][dest]
+                        else:
+                            remaining_passengers[start][dest] -= remaining
+                            remaining = 0
+                        if remaining == 0:
+                            break
+                else:
+                    t_board = 0
 
-                # 上下车时间（每人3秒，单位：分钟）
-                boarding_time = pick_up * 3 / 60
-                alighting_time = drop_off * 3 / 60
-                travel_time += boarding_time + alighting_time
+                # 累加当前边的总时间
+                seg_time = t_run + t_board
+                bus_round_time += seg_time
 
+                # 将车辆移动到下一个站点
                 bus.location = end
-                round_time += travel_time  # 累加每辆车本轮所有路段的时间
-            # ...existing code...
 
-        total_time += round_time / len(buses)
+            # 每辆车完成一轮后的运行时间累加到总时间
+            total_time += bus_round_time
 
-    # 返回总时间和剩余需求数量
+    # 计算剩余未满足的需求
     remaining = sum(sum(d.values()) for d in remaining_passengers.values())
     return total_time, remaining
+# ...existing code...
 
 def init_genetic_algorithm(buses, route_count, population_size):
     population = []
