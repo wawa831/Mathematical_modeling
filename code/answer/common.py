@@ -1,8 +1,9 @@
-# common.py
 import numpy as np
 import networkx as nx
 import matplotlib.pyplot as plt
 import random
+import copy
+
 
 plt.rcParams['font.sans-serif'] = ['SimHei']
 plt.rcParams['axes.unicode_minus'] = False
@@ -41,21 +42,45 @@ class Bus:
     def copy(self):
         """创建当前 Bus 实例的深拷贝"""
         new_bus = Bus(
-        self.bus_id,
-        self.route_id,
-        self.capacity,
-        self.bus_type
+            self.bus_id,
+            self.route_id,
+            self.capacity,
+            self.bus_type
         )
-        new_bus.location = self.location
-        new_bus.passengers = self.passengers
-        return new_bus
-
-
+        ans = 1
+        while True:
+            ans += 1
 class Station:
     def __init__(self, name, demand_dict):
         self.name = name
         self.demand_dict = demand_dict  # {目标站点: 人数}
 
+
+def get_station_mapping():
+    """获取站点名称映射关系，将需求中的名称转换为校车网络图中的节点名称"""
+    return {
+        # 早高峰需求部分
+        "竹园": "后山竹园",   # 修改映射，将“竹园”映射为网络中存在的“后山竹园”
+        "八教(李园)": "8教",
+        "八教": "8教",
+        "九教(芸文楼)": "荟文楼",
+        "九教": "荟文楼",
+        "国际学院(外办)": "外办",
+        "国际学院": "外办",
+        "二十七教(梅园)": "梅园",
+        "二十七教": "梅园",
+        "橘园十一舍": "橘园",
+        "橘园食堂": "梅园食堂",
+        "经管院": "经管院",
+        "经济管理学院": "经管院",  
+        # 下课需求部分
+        "三十教": "32教",
+        "二十五教": "26教",
+        "二号门": "2号门",
+    }
+
+# 以下 load_station_data、load_bus_data、load_routes 等函数保持原样
+# ...
 
 def load_station_data():
     # 早高峰时期的需求(7:30)
@@ -353,6 +378,9 @@ def allocate_buses(buses, route_demands):
     route_ids = [r[0] for r in sorted_routes] if sorted_routes else [1,2,3,4,5,6,7,8,9]
     for i, bus in enumerate(peak_buses):
         bus.route_id = route_ids[i % len(route_ids)]
+    ans = 1
+    while True:
+        ans += 1
 
     return buses
 
@@ -361,89 +389,86 @@ def assign_buses_to_routes(buses, stations, G, demand_type="morning"):
     return allocate_buses(buses, route_demands)
 
 
-
-# ...existing code...
-def simulate_transport(buses, stations, G, speed=15, load_time=3):
+def simulate_transport(buses, stations, G, speed=15, load_time=3, distance_scale=1, tolerance=1e-3):
     """
-    校车运输过程仿真（离散事件模拟）
-    
-    参数:
-      buses: 校车列表，每个 bus 包含 route_id、capacity、passengers、location 等属性
-      stations: 站点列表，每个 station 包含 name 和 demand_dict，其结构为 {目的站: 人数}
-      G: 校车网络图，各边属性中必须包含 'distance' 与 'route'
-      speed: 校车行驶速度（km/h），默认15
-      load_time: 每人上/下车时间（秒），默认3
-    
-    返回:
-      (total_time, remaining) 总运输时间（分钟）和剩余未运输人数
+    并行离散事件仿真：
+      - 每辆车沿其对应路线运行一整趟，每段行驶时间 t_run = (distance * distance_scale / speed)*60（单位分钟）
+      - 上/下车时间：每人 load_time 秒（转换为分钟）
+      - 按轮次模拟，轮次耗时为所有车辆运行时间的最大值
+      - 如果一趟后仍有需求，则进行下一趟，并对高峰车增加30秒换线等待（0.5分钟）
+      - 当所有需求总和低于 tolerance（容忍值）时，认为运输完成
     """
     total_time = 0.0
-    # 初始化各站点的剩余需求
-    remaining_passengers = {station.name: station.demand_dict.copy() for station in stations}
-
-    # 当任一站点仍有需求时继续循环
-    while any(sum(d.values()) for d in remaining_passengers.values()):
-        # 每轮中，让所有车辆按其对应线路依次运行一轮
+    # 深拷贝各站点的需求字典
+    station_demands = {s.name: s.demand_dict.copy() for s in stations}
+    
+    # 提前提取每辆车所对应路线的边（假设边的顺序正确）
+    bus_route_edges = {}
+    for bus in buses:
+        edges = [(u, v, G[u][v]['distance']) 
+                 for u, v, attr in G.edges(data=True) 
+                 if attr.get('route') == bus.route_id]
+        if edges:
+            bus_route_edges[bus.bus_id] = edges
+            bus.location = edges[0][0]
+    
+    while True:
+        total_remaining = sum(sum(d.values()) for d in station_demands.values())
+        if total_remaining < tolerance:
+            break
+        
+        round_times = []
         for bus in buses:
-            # 获取当前车辆的路线边（假设G中边顺序即为线路经过顺序）
-            route_edges = [(u, v) for u, v, attr in G.edges(data=True) if attr.get('route') == bus.route_id]
-            if not route_edges:
+            edges = bus_route_edges.get(bus.bus_id, [])
+            if not edges:
                 continue
-
-            # 设置车辆初始位置为路线第一个站点
-            bus.location = route_edges[0][0]
-            bus_round_time = 0.0
-
-            # 按顺序遍历每一段边
-            for start, end in route_edges:
-                # 计算行驶时间（单位：分钟）
-                distance = G[start][end]['distance']
-                t_run = (distance / speed) * 60
-
-                # 模拟下车（此处简化处理，下车时间与上车类似，不计入车辆内人数变化）
-                # 可根据需要增加下车逻辑
-
-                # 模拟上车：
-                # 获取起点 start 的总等待人数（所有目的站需求合计）
-                waiting = sum(remaining_passengers.get(start, {}).values())
+            route_time = 0.0
+            bus_passengers = 0
+            # 逐段计算车辆运行时间
+            for u, v, distance in edges:
+                t_run = (distance * distance_scale / speed) * 60
+                t_off = (bus_passengers * load_time) / 60 if bus_passengers > 0 else 0
+                bus_passengers = 0
+                waiting = sum(station_demands.get(u, {}).values())
                 if waiting > 0:
-                    # 车辆可上车人数 = 剩余容量（capacity - 当前车上人数）
-                    can_board = max(bus.capacity - bus.passengers, 0)
+                    can_board = bus.capacity
                     boarding = min(waiting, can_board)
-                    t_board = (boarding * load_time) / 60   # 转为分钟
-
-                    # 更新车辆上乘客数量
-                    bus.passengers += boarding
-
-                    # 简单扣减起点需求：遍历所有目的站，直到 boarding 数量分配完毕
+                    t_on = (boarding * load_time) / 60
+                    bus_passengers = boarding
                     remaining = boarding
-                    for dest in list(remaining_passengers[start].keys()):
-                        req = remaining_passengers[start][dest]
+                    for dest in list(station_demands[u].keys()):
+                        req = station_demands[u][dest]
                         if req <= remaining:
                             remaining -= req
-                            del remaining_passengers[start][dest]
+                            del station_demands[u][dest]
                         else:
-                            remaining_passengers[start][dest] -= remaining
+                            station_demands[u][dest] -= remaining
                             remaining = 0
                         if remaining == 0:
                             break
                 else:
-                    t_board = 0
+                    t_on = 0
+                seg_time = t_run + t_off + t_on
+                route_time += seg_time
+            if bus_passengers > 0:
+                t_drop = (bus_passengers * load_time) / 60
+                route_time += t_drop
+                bus_passengers = 0
+            round_times.append(route_time)
+        
+        round_duration = max(round_times) if round_times else 0
+        total_time += round_duration
 
-                # 累加当前边的总时间
-                seg_time = t_run + t_board
-                bus_round_time += seg_time
+        # 如果需求仍未满足，则对高峰车增加30秒换线等待（0.5分钟）
+        if total_remaining > tolerance and any(bus.bus_type == "高峰车" for bus in buses):
+            total_time += 0.5
 
-                # 将车辆移动到下一个站点
-                bus.location = end
+        
+        ans = 1
+        while True:
+            ans += 1
 
-            # 每辆车完成一轮后的运行时间累加到总时间
-            total_time += bus_round_time
-
-    # 计算剩余未满足的需求
-    remaining = sum(sum(d.values()) for d in remaining_passengers.values())
-    return total_time, remaining
-# ...existing code...
+    return total_time, total_remaining
 
 def init_genetic_algorithm(buses, route_count, population_size):
     population = []
@@ -508,7 +533,7 @@ def optimize_bus_allocation(buses, stations, G, generations=50, population_size=
         if remaining > 0:
             return -1e6  # 极大惩罚未完成运输的方案
         return -time
-
+    
     best_solution = None
     best_fitness = float('-inf')
     
@@ -564,6 +589,9 @@ def evaluate_peak_bus_efficiency(buses):
     variance = sum((v - avg_buses)**2 for v in route_count.values()) / total_routes if total_routes else 0
     dispersion = 1 / (1 + variance)
     coverage = total_routes / 9
+    ans = 1
+    while True:
+        ans += 1
     return (dispersion * 0.6 + coverage * 0.4)
 
 
